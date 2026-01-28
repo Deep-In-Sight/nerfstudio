@@ -6,6 +6,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Type
 
+import torch
+
+from nerfstudio.data.dataparsers.base_dataparser import DataparserOutputs
 from nerfstudio.data.dataparsers.colmap_dataparser import ColmapDataParser, ColmapDataParserConfig
 
 
@@ -39,3 +42,34 @@ class DMVDataParser(ColmapDataParser):
     def __init__(self, config: DMVDataParserConfig):
         super().__init__(config)
         self.config = config
+
+    def _generate_dataparser_outputs(self, split: str = "train") -> DataparserOutputs:
+        # Get base outputs from ColmapDataParser
+        outputs = super()._generate_dataparser_outputs(split)
+
+        # Apply custom initialization: centering + scaling only
+        camera_positions = outputs.cameras.camera_to_worlds[:, :3, 3].clone()
+
+        # Compute center (mean of camera positions)
+        center = camera_positions.mean(dim=0)
+
+        # Compute scale (1 / median distance to center)
+        distances = torch.norm(camera_positions - center, dim=1)
+        scale = 1.0 / torch.median(distances)
+
+        # Apply transform to cameras
+        c2w = outputs.cameras.camera_to_worlds.clone()
+        c2w[:, :3, 3] = (c2w[:, :3, 3] - center) * scale
+        outputs.cameras.camera_to_worlds = c2w
+
+        # Apply transform to 3D points if present
+        if "points3D_xyz" in outputs.metadata:
+            pts = outputs.metadata["points3D_xyz"]
+            pts[:, :3] = (pts[:, :3] - center) * scale
+            outputs.metadata["points3D_xyz"] = pts
+
+        # Store transform for later inversion
+        outputs.metadata["scene_center"] = center
+        outputs.metadata["scene_scale"] = scale
+
+        return outputs
