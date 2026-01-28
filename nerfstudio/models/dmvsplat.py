@@ -11,6 +11,35 @@ from torch.nn import Parameter
 from nerfstudio.models.splatfacto import SplatfactoModel, SplatfactoModelConfig
 
 
+def compute_depth_loss(
+    pred_depth: torch.Tensor,
+    gt_depth: torch.Tensor,
+    mask: Optional[torch.Tensor] = None,
+) -> torch.Tensor:
+    """Compute L2 depth loss with masking.
+
+    Args:
+        pred_depth: Predicted depth [H, W, 1]
+        gt_depth: Ground truth depth [H, W, 1], 0 = invalid
+        mask: Optional ignore mask [H, W, 1], 1 = use, 0 = ignore
+
+    Returns:
+        Scalar loss value
+    """
+    # Valid = has depth (gt > 0)
+    valid_mask = (gt_depth > 0).float()
+
+    # Combine with ignore mask if provided
+    if mask is not None:
+        valid_mask = valid_mask * mask.float()
+
+    # L2 loss on valid pixels only
+    diff_sq = (pred_depth - gt_depth) ** 2
+    loss = (diff_sq * valid_mask).sum() / valid_mask.sum().clamp(min=1)
+
+    return loss
+
+
 @dataclass
 class DMVSplatModelConfig(SplatfactoModelConfig):
     """DMVSplat Model Config"""
