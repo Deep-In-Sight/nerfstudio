@@ -43,9 +43,43 @@ class DMVDataParser(ColmapDataParser):
         super().__init__(config)
         self.config = config
 
+    def _get_sorting_key(self, filename: Path) -> tuple:
+        """Extract (timestamp, camera_id, patch_id) for sorting.
+
+        Args:
+            filename: Path with format L2PRO_camera_{cam_id}_{timestamp}_{patch_id}.ext
+
+        Returns:
+            Tuple of (timestamp, camera_id, patch_id) for sorting
+        """
+        stem = filename.stem
+        parts = stem.rsplit("_", 2)  # Split from right to get [prefix, timestamp, patch]
+
+        patch_id = int(parts[-1])
+        timestamp = float(parts[-2])
+        # Extract camera_id from prefix (e.g., "L2PRO_camera_0")
+        camera_id = int(parts[-3].split("_")[-1])
+
+        return (timestamp, camera_id, patch_id)
+
     def _generate_dataparser_outputs(self, split: str = "train") -> DataparserOutputs:
         # Get base outputs from ColmapDataParser
         outputs = super()._generate_dataparser_outputs(split)
+
+        # Sort by (timestamp, camera_id, patch_id)
+        if len(outputs.image_filenames) > 0:
+            indices = sorted(
+                range(len(outputs.image_filenames)),
+                key=lambda i: self._get_sorting_key(outputs.image_filenames[i])
+            )
+
+            # Reorder all lists
+            outputs.image_filenames = [outputs.image_filenames[i] for i in indices]
+            if outputs.mask_filenames:
+                outputs.mask_filenames = [outputs.mask_filenames[i] for i in indices]
+
+            # Reorder cameras (use tensor for indexing)
+            outputs.cameras = outputs.cameras[torch.tensor(indices)]
 
         # Apply custom initialization: centering + scaling only
         camera_positions = outputs.cameras.camera_to_worlds[:, :3, 3].clone()

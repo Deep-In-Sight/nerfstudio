@@ -114,3 +114,24 @@ def test_dmv_dataparser_custom_initialization(mocked_dmv_dataset):
     distances = torch.norm(camera_positions - center, dim=1)
     median_dist = torch.median(distances)
     assert abs(median_dist - 1.0) < 0.1
+
+
+def test_dmv_dataparser_view_sampling_order(mocked_dmv_dataset):
+    """Test that views are sorted by (timestamp, camera_id, patch_id)"""
+    from nerfstudio.data.dataparsers.dmv_dataparser import DMVDataParser, DMVDataParserConfig
+
+    config = DMVDataParserConfig(data=mocked_dmv_dataset, eval_mode="all")
+    parser = config.setup()
+    outputs = parser.get_dataparser_outputs(split="train")
+
+    # Extract filenames
+    filenames = [f.name for f in outputs.image_filenames]
+
+    # Expected order: sorted by (timestamp, camera_id, patch_id)
+    expected = [
+        "L2PRO_camera_0_1739427221.019772_0.jpg",
+        "L2PRO_camera_0_1739427221.019772_1.jpg",
+        "L2PRO_camera_0_1739427221.219651_0.jpg",
+    ]
+
+    assert filenames == expected
