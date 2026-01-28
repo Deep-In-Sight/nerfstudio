@@ -374,9 +374,6 @@ class DMVSplatModel(Model):
             rasterize_mode=self.config.rasterize_mode,
         )
 
-        if self.training:
-            self.strategy.step_pre_backward(self.gauss_params, self.optimizers, self.step, self.info)
-
         background = self._get_background_color()
         rgb = render[:, ..., :3] + (1 - alpha) * background
         rgb = torch.clamp(rgb, 0.0, 1.0)
