@@ -108,6 +108,31 @@ class DMVStrategy:
         return mask.sum().item()
 
 
+def enforce_anchor_constraint(
+    means: torch.Tensor,
+    anchors: torch.Tensor,
+    anchor_distance: float,
+) -> torch.Tensor:
+    """Clamp means to be within anchor_distance of their anchors.
+
+    Args:
+        means: Current positions [N, 3]
+        anchors: Anchor positions [N, 3]
+        anchor_distance: Maximum allowed distance
+
+    Returns:
+        Clamped positions [N, 3]
+    """
+    displacement = means - anchors
+    distance = displacement.norm(dim=-1, keepdim=True)
+    exceeded = distance > anchor_distance
+
+    # Clamp direction to anchor_distance
+    clamped = anchors + displacement / distance.clamp(min=1e-6) * anchor_distance
+
+    return torch.where(exceeded, clamped, means)
+
+
 @dataclass
 class DMVSplatModelConfig(SplatfactoModelConfig):
     """DMVSplat Model Config"""

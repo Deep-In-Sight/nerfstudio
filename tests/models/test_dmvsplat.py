@@ -71,3 +71,28 @@ def test_dmv_strategy_prune():
     assert mask.sum() == 3  # 3 gaussians should remain
     assert mask[0] == False  # First gaussian should be pruned
     assert mask[1] == True   # opacity = 0.5, exactly at threshold
+
+
+def test_dmvsplat_anchor_enforcement():
+    """Test that gaussians are clamped to anchor_distance"""
+    from nerfstudio.models.dmvsplat import enforce_anchor_constraint
+
+    # Anchors at origin, means moved away
+    anchors = torch.zeros(3, 3)
+    means = torch.tensor([
+        [0.05, 0.0, 0.0],   # distance 0.05, within limit
+        [0.2, 0.0, 0.0],    # distance 0.2, exceeds limit
+        [0.0, 0.15, 0.0],   # distance 0.15, exceeds limit
+    ])
+    anchor_distance = 0.1
+
+    clamped = enforce_anchor_constraint(means, anchors, anchor_distance)
+
+    # First gaussian should be unchanged
+    assert torch.allclose(clamped[0], means[0])
+
+    # Second gaussian should be clamped to distance 0.1
+    assert abs(torch.norm(clamped[1] - anchors[1]).item() - 0.1) < 0.001
+
+    # Third gaussian should be clamped to distance 0.1
+    assert abs(torch.norm(clamped[2] - anchors[2]).item() - 0.1) < 0.001
