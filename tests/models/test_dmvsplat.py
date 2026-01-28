@@ -10,13 +10,16 @@ def test_dmvsplat_config_exists():
 
     config = DMVSplatModelConfig()
 
-    # Check new config fields exist with defaults
+    # Check config fields exist with defaults
     assert config.depth_regularize == True
     assert config.depth_loss_weight == 0.8
     assert config.enable_anchoring == True
     assert config.anchor_distance == 0.1
     assert config.pruning_enable == False
-    assert config.num_epoch_freeze_means == 10
+    # New fields
+    assert config.enable_scale_clamp == True
+    assert config.max_scale_factor == 2.0
+    assert config.histogram_log_every == 1000
 
 
 def test_dmvsplat_depth_loss():
@@ -96,3 +99,32 @@ def test_dmvsplat_anchor_enforcement():
 
     # Third gaussian should be clamped to distance 0.1
     assert abs(torch.norm(clamped[2] - anchors[2]).item() - 0.1) < 0.001
+
+
+def test_dmvsplat_scale_enforcement():
+    """Test that scales are clamped per-axis to max_scale_factor times initial"""
+    import math
+    from nerfstudio.models.dmvsplat import enforce_scale_constraint
+
+    # Initial scales in log space
+    anchor_scales = torch.tensor([
+        [0.0, 0.0, 0.0],     # exp(0) = 1.0 in real space
+        [-1.0, 0.0, 1.0],    # different per axis
+    ])
+
+    # Current scales - some exceed 2x (log(2) ≈ 0.693)
+    scales = torch.tensor([
+        [0.5, 0.5, 0.6],     # all within 2x limit
+        [-0.5, 0.5, 2.0],    # third axis exceeds 2x (1.0 + 0.693 = 1.693, 2.0 > 1.693)
+    ])
+
+    max_scale_factor = 2.0
+    clamped = enforce_scale_constraint(scales, anchor_scales, max_scale_factor)
+
+    # First gaussian: all within limit, unchanged
+    assert torch.allclose(clamped[0], scales[0])
+
+    # Second gaussian: first two axes within limit, third clamped
+    assert torch.allclose(clamped[1, :2], scales[1, :2])
+    expected_max = anchor_scales[1, 2] + math.log(max_scale_factor)
+    assert abs(clamped[1, 2].item() - expected_max) < 0.001
