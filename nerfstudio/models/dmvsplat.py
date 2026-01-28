@@ -83,3 +83,29 @@ class DMVSplatModel(SplatfactoModel):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+
+    def get_loss_dict(
+        self, outputs: Dict[str, torch.Tensor], batch: Dict[str, torch.Tensor], metrics_dict: Optional[Dict] = None
+    ) -> Dict[str, torch.Tensor]:
+        """Compute losses including depth regularization."""
+        # Get base losses from splatfacto
+        loss_dict = super().get_loss_dict(outputs, batch, metrics_dict)
+
+        # Add depth loss if enabled and depth available
+        if self.config.depth_regularize and "depth_image" in batch and "depth" in outputs:
+            gt_depth = batch["depth_image"].to(self.device)
+            pred_depth = outputs["depth"]
+
+            # Downscale gt_depth to match pred_depth if needed
+            if gt_depth.shape[:2] != pred_depth.shape[:2]:
+                gt_depth = self._downscale_if_required(gt_depth)
+
+            # Get mask if available
+            mask = batch.get("mask", None)
+            if mask is not None:
+                mask = self._downscale_if_required(mask).to(self.device)
+
+            depth_loss = compute_depth_loss(pred_depth, gt_depth, mask)
+            loss_dict["depth_loss"] = self.config.depth_loss_weight * depth_loss
+
+        return loss_dict

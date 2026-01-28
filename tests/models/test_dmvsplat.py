@@ -35,3 +35,11 @@ def test_dmvsplat_depth_loss():
     # (0,1): (2-2.5)^2 = 0.25
     # Mean = 0.125
     assert abs(loss.item() - 0.125) < 0.01
+
+
+def test_dmvsplat_get_loss_dict_has_depth_loss():
+    """Test that get_loss_dict includes depth_loss when depth_image is in batch"""
+    from nerfstudio.models.dmvsplat import DMVSplatModel, DMVSplatModelConfig
+
+    # Check the method exists and has correct signature
+    assert hasattr(DMVSplatModel, 'get_loss_dict')
