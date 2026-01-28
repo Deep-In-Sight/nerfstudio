@@ -1,5 +1,9 @@
 # 3dgs customized training
 
+## Status: Implemented
+
+Implementation complete. See `docs/plans/2026-01-28-dmvsplat-design.md` for design.
+
 ## about
 
 This project aims to implement another nerfstudio method based on splatfacto. This method supports:
