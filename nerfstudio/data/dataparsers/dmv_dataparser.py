@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Type
 
+import pandas as pd
 import torch
 
 from nerfstudio.data.dataparsers.base_dataparser import DataparserOutputs
@@ -62,6 +63,18 @@ class DMVDataParser(ColmapDataParser):
 
         return (timestamp, camera_id, patch_id)
 
+    def _load_depth_range(self) -> dict:
+        """Load depth range from CSV file"""
+        csv_path = self.config.data / self.config.depths_path / "depth_range.csv"
+        if not csv_path.exists():
+            return {}
+
+        df = pd.read_csv(csv_path)
+        return {
+            row["depth_name"]: (row["depth_min"], row["depth_max"])
+            for _, row in df.iterrows()
+        }
+
     def _generate_dataparser_outputs(self, split: str = "train") -> DataparserOutputs:
         # Get base outputs from ColmapDataParser
         outputs = super()._generate_dataparser_outputs(split)
@@ -105,5 +118,8 @@ class DMVDataParser(ColmapDataParser):
         # Store transform for later inversion
         outputs.metadata["scene_center"] = center
         outputs.metadata["scene_scale"] = scale
+
+        # Load depth range from CSV
+        outputs.metadata["depth_range"] = self._load_depth_range()
 
         return outputs

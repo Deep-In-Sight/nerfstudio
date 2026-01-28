@@ -135,3 +135,25 @@ def test_dmv_dataparser_view_sampling_order(mocked_dmv_dataset):
     ]
 
     assert filenames == expected
+
+
+def test_dmv_dataparser_depth_range_loading(mocked_dmv_dataset):
+    """Test that depth_range.csv is loaded into metadata"""
+    from nerfstudio.data.dataparsers.dmv_dataparser import DMVDataParser, DMVDataParserConfig
+
+    config = DMVDataParserConfig(data=mocked_dmv_dataset)
+    parser = config.setup()
+    outputs = parser.get_dataparser_outputs(split="train")
+
+    # Check depth_range is in metadata
+    assert "depth_range" in outputs.metadata
+    depth_range = outputs.metadata["depth_range"]
+
+    # Check it's a dict with expected keys
+    assert isinstance(depth_range, dict)
+    assert "L2PRO_camera_0_1739427221.019772_0.png" in depth_range
+
+    # Check values are (min, max) tuples
+    min_d, max_d = depth_range["L2PRO_camera_0_1739427221.019772_0.png"]
+    assert min_d == 1.0
+    assert max_d == 10.0
