@@ -445,6 +445,12 @@ class DMVSplatModel(Model):
             for name in ["means", "scales", "quats", "features_dc", "features_rest", "opacities"]
         }
 
+    @torch.no_grad()
+    def get_outputs_for_camera(self, camera: Cameras, obb_box=None) -> Dict[str, torch.Tensor]:
+        """Get outputs for a camera (used during evaluation)."""
+        assert camera is not None, "must provide camera to gaussian model"
+        return self.get_outputs(camera.to(self.device))
+
     def get_training_callbacks(
         self, training_callback_attributes: TrainingCallbackAttributes
     ) -> List[TrainingCallback]:
