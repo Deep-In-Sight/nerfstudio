@@ -43,3 +43,31 @@ def test_dmvsplat_get_loss_dict_has_depth_loss():
 
     # Check the method exists and has correct signature
     assert hasattr(DMVSplatModel, 'get_loss_dict')
+
+
+def test_dmv_strategy_prune():
+    """Test DMVStrategy pruning logic"""
+    from nerfstudio.models.dmvsplat import DMVStrategy
+
+    strategy = DMVStrategy(prune_alpha_thresh=0.5, prune_every=10)
+
+    # Create mock params with opacities (in log space, so sigmoid needed)
+    # sigmoid(-2) ≈ 0.12, sigmoid(0) = 0.5, sigmoid(2) ≈ 0.88
+    params = {
+        "means": torch.nn.Parameter(torch.randn(4, 3)),
+        "opacities": torch.nn.Parameter(torch.tensor([[-2.0], [0.0], [2.0], [3.0]])),
+    }
+
+    # Mock optimizers (simplified)
+    optimizers = {}
+    state = {}
+    info = {}
+
+    # At step 10, with pruning enabled, should prune gaussians with opacity < 0.5
+    # Gaussian 0 (opacity ~0.12) should be pruned
+    # Gaussians 1,2,3 should remain
+    mask = strategy._get_prune_mask(params)
+
+    assert mask.sum() == 3  # 3 gaussians should remain
+    assert mask[0] == False  # First gaussian should be pruned
+    assert mask[1] == True   # opacity = 0.5, exactly at threshold

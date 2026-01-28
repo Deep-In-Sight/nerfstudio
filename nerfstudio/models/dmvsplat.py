@@ -40,6 +40,74 @@ def compute_depth_loss(
     return loss
 
 
+class DMVStrategy:
+    """Minimal ADC strategy for dense LiDAR initialization.
+
+    Only supports optional opacity-based pruning.
+    No densification, no opacity reset, no split/duplicate.
+    """
+
+    def __init__(self, prune_alpha_thresh: float = 0.1, prune_every: int = 100):
+        self.prune_alpha_thresh = prune_alpha_thresh
+        self.prune_every = prune_every
+
+    def step_pre_backward(self, *args, **kwargs):
+        """No gradient accumulation needed."""
+        pass
+
+    def _get_prune_mask(self, params: Dict[str, torch.nn.Parameter]) -> torch.Tensor:
+        """Get mask of gaussians to keep (True = keep)."""
+        opacities = torch.sigmoid(params["opacities"].squeeze(-1))
+        return opacities >= self.prune_alpha_thresh
+
+    def step_post_backward(
+        self,
+        params: Dict[str, torch.nn.Parameter],
+        optimizers: Dict[str, torch.optim.Optimizer],
+        state: Dict,
+        step: int,
+        info: Dict,
+        pruning_enable: bool = False,
+    ):
+        """Optionally prune low-opacity gaussians."""
+        if not pruning_enable:
+            return None
+
+        if step > 0 and step % self.prune_every == 0:
+            mask = self._get_prune_mask(params)
+            if mask.sum() < len(mask):
+                return self._prune(params, optimizers, mask)
+
+        return None
+
+    def _prune(
+        self,
+        params: Dict[str, torch.nn.Parameter],
+        optimizers: Dict[str, torch.optim.Optimizer],
+        mask: torch.Tensor,
+    ) -> int:
+        """Remove gaussians where mask is False. Returns count of remaining."""
+        for name, param in params.items():
+            params[name] = torch.nn.Parameter(param.data[mask])
+
+            # Update optimizer state if exists
+            if name in optimizers:
+                opt = optimizers[name]
+                for group in opt.param_groups:
+                    for i, p in enumerate(group["params"]):
+                        if p is param:
+                            group["params"][i] = params[name]
+                            # Update momentum/state
+                            if p in opt.state:
+                                state = opt.state.pop(p)
+                                for key, val in state.items():
+                                    if isinstance(val, torch.Tensor) and val.shape[0] == len(mask):
+                                        state[key] = val[mask]
+                                opt.state[params[name]] = state
+
+        return mask.sum().item()
+
+
 @dataclass
 class DMVSplatModelConfig(SplatfactoModelConfig):
     """DMVSplat Model Config"""
