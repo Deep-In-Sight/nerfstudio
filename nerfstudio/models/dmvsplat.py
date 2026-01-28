@@ -176,24 +176,41 @@ class DMVSplatModel(SplatfactoModel):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.anchors: Optional[torch.Tensor] = None
+        self.anchor_distance_scaled: Optional[float] = None
+        self.num_images: Optional[int] = None
+        self.strategy = DMVStrategy(
+            prune_alpha_thresh=self.config.prune_alpha_thresh,
+            prune_every=self.config.prune_every,
+        )
+
+    def populate_modules(self):
+        super().populate_modules()
+
+        if self.config.enable_anchoring:
+            # Store initial positions as anchors
+            self.register_buffer("anchors", self.gauss_params["means"].detach().clone())
+
+            # Get scale factor from metadata (set by dataparser)
+            scale_factor = self.kwargs.get("metadata", {}).get("scene_scale", 1.0)
+            if isinstance(scale_factor, torch.Tensor):
+                scale_factor = scale_factor.item()
+            self.anchor_distance_scaled = self.config.anchor_distance * scale_factor
 
     def get_loss_dict(
         self, outputs: Dict[str, torch.Tensor], batch: Dict[str, torch.Tensor], metrics_dict: Optional[Dict] = None
     ) -> Dict[str, torch.Tensor]:
         """Compute losses including depth regularization."""
-        # Get base losses from splatfacto
         loss_dict = super().get_loss_dict(outputs, batch, metrics_dict)
 
-        # Add depth loss if enabled and depth available
+        # Add depth loss
         if self.config.depth_regularize and "depth_image" in batch and "depth" in outputs:
             gt_depth = batch["depth_image"].to(self.device)
             pred_depth = outputs["depth"]
 
-            # Downscale gt_depth to match pred_depth if needed
             if gt_depth.shape[:2] != pred_depth.shape[:2]:
                 gt_depth = self._downscale_if_required(gt_depth)
 
-            # Get mask if available
             mask = batch.get("mask", None)
             if mask is not None:
                 mask = self._downscale_if_required(mask).to(self.device)
@@ -202,3 +219,31 @@ class DMVSplatModel(SplatfactoModel):
             loss_dict["depth_loss"] = self.config.depth_loss_weight * depth_loss
 
         return loss_dict
+
+    def step_post_backward(self, step: int):
+        """Called after backward pass. Enforce anchoring constraint."""
+        # Enforce anchor constraint
+        if self.config.enable_anchoring and self.anchors is not None:
+            with torch.no_grad():
+                clamped = enforce_anchor_constraint(
+                    self.gauss_params["means"].data,
+                    self.anchors,
+                    self.anchor_distance_scaled,
+                )
+                self.gauss_params["means"].data.copy_(clamped)
+
+        # Call strategy for optional pruning
+        if hasattr(self, 'strategy'):
+            result = self.strategy.step_post_backward(
+                params=self.gauss_params,
+                optimizers=self.optimizers,
+                state={},
+                step=step,
+                info=self.info if hasattr(self, 'info') else {},
+                pruning_enable=self.config.pruning_enable,
+            )
+
+            # Update anchors if pruning occurred
+            if result is not None and self.config.enable_anchoring:
+                mask = self.strategy._get_prune_mask(self.gauss_params)
+                self.anchors = self.anchors[mask]
