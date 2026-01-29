@@ -157,3 +157,26 @@ def test_dmv_dataparser_depth_range_loading(mocked_dmv_dataset):
     min_d, max_d = depth_range["L2PRO_camera_0_1739427221.019772_0.png"]
     assert min_d == 1.0
     assert max_d == 10.0
+
+
+def test_dmv_dataparser_depth_filenames(mocked_dmv_dataset):
+    """Test that depth_filenames is built from image filenames"""
+    from nerfstudio.data.dataparsers.dmv_dataparser import DMVDataParser, DMVDataParserConfig
+
+    config = DMVDataParserConfig(data=mocked_dmv_dataset)
+    parser = config.setup()
+    outputs = parser.get_dataparser_outputs(split="train")
+
+    # Check depth_filenames is in metadata
+    assert "depth_filenames" in outputs.metadata
+    depth_filenames = outputs.metadata["depth_filenames"]
+
+    # Check it's a list with same length as image_filenames
+    assert isinstance(depth_filenames, list)
+    assert len(depth_filenames) == len(outputs.image_filenames)
+
+    # Check filenames match image stems with .png extension
+    for img_path, depth_path in zip(outputs.image_filenames, depth_filenames):
+        assert depth_path.stem == img_path.stem
+        assert depth_path.suffix == ".png"
+        assert depth_path.parent.name == "depths"

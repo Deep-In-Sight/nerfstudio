@@ -122,4 +122,13 @@ class DMVDataParser(ColmapDataParser):
         # Load depth range from CSV
         outputs.metadata["depth_range"] = self._load_depth_range()
 
+        # Build depth_filenames from image filenames
+        depths_dir = self.config.data / self.config.depths_path
+        if depths_dir.exists():
+            depth_filenames = []
+            for img_path in outputs.image_filenames:
+                depth_path = depths_dir / f"{img_path.stem}.png"
+                depth_filenames.append(depth_path)
+            outputs.metadata["depth_filenames"] = depth_filenames
+
         return outputs

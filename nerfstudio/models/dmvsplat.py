@@ -173,6 +173,8 @@ class DMVSplatModelConfig(ModelConfig):
     """Whether to clamp gaussian scales"""
     max_scale_factor: float = 2.0
     """Maximum scale growth factor per axis"""
+    max_initial_scale: float = 1.0
+    """Maximum initial gaussian scale in meters (world space, before scene scaling)"""
 
     # Pruning
     pruning_enable: bool = False
@@ -208,8 +210,18 @@ class DMVSplatModel(Model):
         else:
             raise ValueError("DMVSplatModel requires seed_points from LiDAR initialization")
 
+        # Get scene scale for converting world meters to scaled units
+        scene_scale = self.kwargs.get("metadata", {}).get("scene_scale", 1.0)
+        if isinstance(scene_scale, torch.Tensor):
+            scene_scale = scene_scale.item()
+
         distances, _ = k_nearest_sklearn(means.data, 3)
         avg_dist = distances.mean(dim=-1, keepdim=True)
+
+        # Clamp initial scale to max_initial_scale meters (converted to scaled space)
+        max_scale_scaled = self.config.max_initial_scale * scene_scale
+        avg_dist = torch.clamp(avg_dist, max=max_scale_scaled)
+
         scales = torch.nn.Parameter(torch.log(avg_dist.repeat(1, 3)))
         num_points = means.shape[0]
         quats = torch.nn.Parameter(random_quat_tensor(num_points))
@@ -240,13 +252,10 @@ class DMVSplatModel(Model):
             }
         )
 
-        # Store anchors for constraints
+        # Store anchors for constraints (reuse scene_scale from above)
         if self.config.enable_anchoring:
             self.register_buffer("anchors", means.detach().clone())
-            scale_factor = self.kwargs.get("metadata", {}).get("scene_scale", 1.0)
-            if isinstance(scale_factor, torch.Tensor):
-                scale_factor = scale_factor.item()
-            self.anchor_distance_scaled = self.config.anchor_distance * scale_factor
+            self.anchor_distance_scaled = self.config.anchor_distance * scene_scale
         else:
             self.anchors = None
             self.anchor_distance_scaled = None
