@@ -33,7 +33,7 @@ import viser
 from rich import box, style
 from rich.panel import Panel
 from rich.table import Table
-from torch.cuda.amp.grad_scaler import GradScaler
+from torch.amp import GradScaler
 
 from nerfstudio.configs.experiment_config import ExperimentConfig
 from nerfstudio.engine.callbacks import TrainingCallback, TrainingCallbackAttributes, TrainingCallbackLocation
@@ -134,7 +134,7 @@ class Trainer:
             CONSOLE.print("Mixed precision is disabled for CPU training.")
         self._start_step: int = 0
         # optimizers
-        self.grad_scaler = GradScaler(enabled=self.use_grad_scaler)
+        self.grad_scaler = GradScaler("cuda", enabled=self.use_grad_scaler)
 
         self.base_dir: Path = config.get_base_dir()
         # directory to save checkpoints

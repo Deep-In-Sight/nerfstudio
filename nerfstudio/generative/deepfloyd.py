@@ -23,7 +23,7 @@ import tyro
 from jaxtyping import Float
 from PIL import Image
 from torch import Generator, Tensor, nn
-from torch.cuda.amp.grad_scaler import GradScaler
+from torch.amp import GradScaler
 
 from nerfstudio.utils.rich_utils import CONSOLE
 

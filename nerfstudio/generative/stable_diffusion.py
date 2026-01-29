@@ -26,7 +26,7 @@ import torch.nn.functional as F
 import tyro
 from jaxtyping import Float
 from torch import Tensor, nn
-from torch.cuda.amp.grad_scaler import GradScaler
+from torch.amp import GradScaler
 
 from nerfstudio.utils.rich_utils import CONSOLE
 
