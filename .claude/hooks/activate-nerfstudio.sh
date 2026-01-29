@@ -9,8 +9,8 @@ command=$(echo "$input" | jq -r '.tool_input.command // empty')
 
 # Check if command contains python, pytest, or pip
 if echo "$command" | grep -qE '(^|\s)(python|pytest|pip)(\s|$)'; then
-    # Prepend conda activation
-    new_command="source ~/miniconda3/etc/profile.d/conda.sh && conda activate nerfstudio && $command"
+    # Source conda.sh from CONDA_EXE path, then activate
+    new_command="source \"\$(dirname \"\$CONDA_EXE\")/../etc/profile.d/conda.sh\" && conda activate nerfstudio && $command"
 
     # Output with correct hookSpecificOutput format
     jq -n --arg cmd "$new_command" '{
